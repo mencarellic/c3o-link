@@ -8,6 +8,8 @@ from aws_lambda_powertools.metrics import MetricUnit
 import boto3
 from botocore.exceptions import ClientError
 import pandas as pd
+from thefuzz import fuzz
+from thefuzz import process
 
 app = APIGatewayRestResolver()
 tracer = Tracer()
@@ -23,6 +25,19 @@ def read_csv(file_path="paths.csv"):
     df = pd.read_csv(file_path,sep=',',header=0, names=['path', 'redirectDestination'])
 
     return df.to_dict('records')
+
+@tracer.capture_method
+def fuzzy_search(path):
+    logger.info("Getting all items from DynamoDB for fuzzy search")
+    data = client.scan(TableName='C3OLink')
+
+    logger.info("Iterating over items")
+    for item in data['Items']:
+        if fuzz.ratio(item['path']['S'], path) > 80:
+            logger.info(f"Fuzzy match found - {item['path']['S']} - {path}")
+            return item['redirectDestination']['S']
+
+    return defaultRedirect
 
 @tracer.capture_method
 def sync_dynamodb(df):
@@ -102,8 +117,9 @@ def fetch_redirect(path):
         redirect_destination = response.get('Item').get('redirectDestination').get('S', defaultRedirect)
         logger.info(f"Forwarding to: {redirect_destination}")
     else:
-        redirect_destination = defaultRedirect
-        logger.info(f"Path not found in DynamoDB - {path} - Using {redirect_destination}")
+        logger.info(f"Path not found in DynamoDB - {path} - Trying Fuzzy Search")
+        redirect_destination = fuzzy_search(path)
+
     return redirect_destination
 
 
@@ -132,7 +148,6 @@ def base():
     logger.info("BasePathInvocation")
 
     refresh = app.current_event.get_header_value(name="x-refresh", case_sensitive=False, default_value="false")
-    logger.info(f"Headers: {app.current_event.headers}")
     logger.info(f"Refresh?: {refresh}")
 
     if refresh.lower() == "true":

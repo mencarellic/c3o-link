@@ -3,3 +3,4 @@ aws_lambda_powertools
 boto3
 aws_xray_sdk
 pandas
+thefuzz
