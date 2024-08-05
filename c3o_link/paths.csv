@@ -1,0 +1,5 @@
+path,redirectDestination
+foo,https://google.com
+bar,https://yahoo.com
+baz,https://bing.com
+default,https://duckduckgo.com
